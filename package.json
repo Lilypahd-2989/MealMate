@@ -1,0 +1,20 @@
+{
+  "name": "mealmate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted HelloFresh alternative — pick recipes, build cart at Albert Heijn, get a daily prep calendar.",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "seed": "npm run seed --workspace=backend",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
