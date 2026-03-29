@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["/Users/lee/Documents/AI Plugins/MealMate/start-frontend.sh"],
+      "port": 3000
+    }
+  ]
+}

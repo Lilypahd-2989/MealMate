@@ -56,18 +56,27 @@ function toBaseAmount(amount: number, unit: string | null): number {
   return amount; // culinary or unknown: no conversion
 }
 
+const COUNTABLE_UNITS = new Set([
+  'none', 'clove', 'cloves', 'piece', 'pieces', 'can', 'cans', 'tin', 'tins', 
+  'medium', 'small', 'large', 'whole', 'handful', 'handfuls', 'sprig', 'sprigs', 
+  'bunch', 'bunches', 'slice', 'slices', 'pinch', 'pinches'
+]);
+
 /**
  * Round to sensible culinary precision after scaling / merging.
- * - Countable (no unit): whole number
+ * - Countable (no unit, or clove, can, piece, etc): whole number
  * - tsp / tbsp / cup / oz / lb: nearest ¼
  * - g / kg / ml / l: nearest whole gram/ml (or 5g above 20g)
  */
 function roundCulinary(amount: number, groupKey: string | null): number {
-  if (!groupKey || groupKey === 'none') {
-    // Countable item — round to nearest whole
-    return Math.round(amount);
+  const normKey = (!groupKey || groupKey === 'none') ? 'none' : groupKey;
+  
+  if (COUNTABLE_UNITS.has(normKey)) {
+    // Countable item — round to nearest whole number (never 0 if original > 0)
+    const rounded = Math.round(amount);
+    return rounded === 0 && amount > 0 ? 1 : rounded;
   }
-  switch (groupKey) {
+  switch (normKey) {
     case 'tsp':
     case 'tbsp':
     case 'cup':

@@ -38,13 +38,27 @@ export interface NutritionInfo {
 /**
  * Parse ISO 8601 duration (PT30M, PT1H15M, etc.) to minutes
  */
-function parseDuration(duration: string | undefined): number | null {
+function parseDuration(duration: string | undefined | null): number | null {
   if (!duration) return null;
-  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return null;
-  const hours = parseInt(match[1] || '0', 10);
-  const minutes = parseInt(match[2] || '0', 10);
-  return hours * 60 + minutes;
+  const str = String(duration).toLowerCase();
+  
+  // Try ISO 8601 first (e.g. PT1H15M)
+  const isoMatch = str.match(/pt(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/);
+  if (isoMatch && (isoMatch[1] || isoMatch[2] || isoMatch[3])) {
+    const hours = parseInt(isoMatch[1] || '0', 10);
+    const minutes = parseInt(isoMatch[2] || '0', 10);
+    return hours * 60 + minutes;
+  }
+
+  // Fallback for human-readable like "1 hour 15 minutes"
+  let minutes = 0;
+  const hourMatch = str.match(/(\d+)\s*(?:hour|hours|hr|hrs)/);
+  if (hourMatch) minutes += parseInt(hourMatch[1], 10) * 60;
+  
+  const minuteMatch = str.match(/(\d+)\s*(?:minute|minutes|min|mins)/);
+  if (minuteMatch) minutes += parseInt(minuteMatch[1], 10);
+
+  return minutes > 0 ? minutes : null;
 }
 
 /**
@@ -115,78 +129,101 @@ function extractImageUrl(imageData: any): string | null {
   return null;
 }
 
-/**
- * Parse ingredient strings from JSON-LD into structured format
- */
+const VALID_UNITS = new Set([
+  'tsp', 'teaspoon', 'teaspoons',
+  'tbsp', 'tablespoon', 'tablespoons',
+  'cup', 'cups',
+  'oz', 'ounce', 'ounces',
+  'lb', 'lbs', 'pound', 'pounds',
+  'g', 'gram', 'grams',
+  'kg', 'kilogram', 'kilograms',
+  'ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres',
+  'l', 'liter', 'liters', 'litre', 'litres',
+  'bunch', 'bunches',
+  'pinch', 'pinches',
+  'piece', 'pieces',
+  'clove', 'cloves',
+  'can', 'cans',
+  'tin', 'tins',
+  'medium', 'small', 'large', 'whole',
+  'slice', 'slices', 'handful', 'handfuls', 'sprig', 'sprigs'
+]);
+
 function parseIngredientString(raw: string): ScrapedIngredient {
-  // Common patterns:
-  // "2 large chicken breasts (about 500g)"
-  // "1 tablespoon olive oil"
-  // "400g tin chopped tomatoes"
-  // "Salt and pepper to taste"
-
   const cleaned = raw.trim();
+  
+  // Extract number at the start. Could be "1", "1.5", "1/2", "1 1/2", "1-2", "1½", "½"
+  const numberRegex = /^(\d+\s+\d+[/]\d+|\d+[/.]\d+|\d+-\d+|\d+[½¼¾⅓⅔⅛]|[½¼¾⅓⅔⅛]|\d+)\s*/;
+  const match = cleaned.match(numberRegex);
+  
+  let amount: number | null = null;
+  let remainingStr = cleaned;
 
-  // Try to extract amount and unit.
-  // Units are ordered longest-first so that e.g. 'lb' is tried before 'l',
-  // 'kg' before 'g', preventing single-letter units stealing the first
-  // character of a multi-letter word or abbreviation.
-  // The \b at the end ensures units only match as complete standalone tokens.
-  const amountUnitMatch = cleaned.match(
-    /^([\d./½¼¾⅓⅔⅛]+(?:\s*-\s*[\d./½¼¾⅓⅔⅛]+)?)\s*(?:(tablespoons?|teaspoons?|tbsp|tsp|cups?|kg|ml|litres?|liters?|litre|liter|pounds?|lb|oz|g|l|cloves?|pieces?|large|medium|small|whole|bunch|handful|pinch|slices?|can|tin)\b)?\s*(?:of\s+)?(.*)/i
-  );
-
-  if (amountUnitMatch) {
-    let amountStr = amountUnitMatch[1];
-    // Handle mixed numbers like 1½ → 1.5 before replacing bare fractions
+  if (match) {
+    let amountStr = match[1];
+    remainingStr = cleaned.slice(match[0].length).trim();
+    
+    // Convert unicode fractions
     amountStr = amountStr
-      .replace(/(\d)½/g, (_, d) => String(parseInt(d, 10) + 0.5))
-      .replace(/(\d)¼/g, (_, d) => String(parseInt(d, 10) + 0.25))
-      .replace(/(\d)¾/g, (_, d) => String(parseInt(d, 10) + 0.75))
-      .replace(/(\d)⅓/g, (_, d) => String(parseInt(d, 10) + 0.33))
-      .replace(/(\d)⅔/g, (_, d) => String(parseInt(d, 10) + 0.67))
-      .replace(/(\d)⅛/g, (_, d) => String(parseInt(d, 10) + 0.125))
-      // Bare fractions (no leading digit)
-      .replace('½', '0.5')
-      .replace('¼', '0.25')
-      .replace('¾', '0.75')
-      .replace('⅓', '0.33')
-      .replace('⅔', '0.67')
-      .replace('⅛', '0.125');
+      .replace(/½/g, '.5')
+      .replace(/¼/g, '.25')
+      .replace(/¾/g, '.75')
+      .replace(/⅓/g, '.33')
+      .replace(/⅔/g, '.67')
+      .replace(/⅛/g, '.125');
 
-    // Handle written fractions like 1/2
-    let amount: number | null = null;
-    if (amountStr.includes('/')) {
-      const parts = amountStr.split('/');
-      amount = parseFloat(parts[0]) / parseFloat(parts[1]);
+    // Parse "1 1/2" or "1/2"
+    if (amountStr.includes(' ')) {
+      const parts = amountStr.split(' ');
+      if (parts[1].includes('/')) {
+        const frac = parts[1].split('/');
+        amount = parseFloat(parts[0]) + (parseFloat(frac[0]) / parseFloat(frac[1]));
+      }
+    } else if (amountStr.includes('/')) {
+      const frac = amountStr.split('/');
+      amount = parseFloat(frac[0]) / parseFloat(frac[1]);
+    } else if (amountStr.includes('-')) {
+      // range like "1-2", just take the first number
+      amount = parseFloat(amountStr.split('-')[0]);
     } else {
       amount = parseFloat(amountStr);
     }
-
-    const unit = amountUnitMatch[2]?.toLowerCase() || null;
-    const name = amountUnitMatch[3]
-      .replace(/^[.,\s]+/, '')         // Strip any leading period/comma left by "lb. name"
-      .replace(/\s*\(.*?\)\s*/g, '')   // Remove parenthetical notes
-      .replace(/,\s*(chopped|diced|sliced|peeled|minced|grated|crushed|halved|quartered|trimmed|rinsed|drained|roughly|finely|thinly|thickly|lightly|loosely|firmly)\b.*/i, '') // Remove prep notes after comma
-      .trim();
-
-    return {
-      name,
-      amount: isNaN(amount) ? null : amount,
-      unit,
-      raw: cleaned,
-      category: categorizeIngredient(name),
-      ah_search_term: null,
-    };
+    
+    if (amount !== null && isNaN(amount)) amount = null;
   }
 
-  // No amount pattern found — just return the name
+  // Parse unit
+  let unit: string | null = null;
+  
+  // Extract first word, removing trailing period or comma
+  const firstWordMatch = remainingStr.match(/^([a-zA-Z]+)[.,]?\s+(.*)/);
+  if (firstWordMatch) {
+    const word = firstWordMatch[1].toLowerCase();
+    
+    // Rule 1: check if it's purely a standalone valid unit
+    if (VALID_UNITS.has(word)) {
+      unit = word;
+      remainingStr = firstWordMatch[2];
+    }
+  }
+
+  // Rule 2 / Strip "of"
+  if (remainingStr.toLowerCase().startsWith('of ')) {
+    remainingStr = remainingStr.slice(3).trim();
+  }
+  
+  // Clean up trailing commas and notes
+  const name = remainingStr
+    .replace(/\s*\(.*?\)\s*/g, '')   // Remove parenthetical notes
+    .replace(/,\s*.*$/, '')          // Remove everything after comma
+    .trim();
+
   return {
-    name: cleaned,
-    amount: null,
-    unit: null,
+    name,
+    amount,
+    unit,
     raw: cleaned,
-    category: categorizeIngredient(cleaned),
+    category: categorizeIngredient(name),
     ah_search_term: null,
   };
 }
