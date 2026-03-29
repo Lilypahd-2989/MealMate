@@ -51,21 +51,15 @@ export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
         <h3 className="recipe-card-title">{recipe.title}</h3>
 
         <div className="recipe-card-meta">
-          {recipe.total_time_min && (
-            <span className="recipe-card-meta-item">
-              ⏱️ {recipe.total_time_min} min
-            </span>
-          )}
-          {recipe.servings && (
-            <span className="recipe-card-meta-item">
-              👤 {recipe.servings} servings
-            </span>
-          )}
-          {recipe.nutrition?.protein_g && (
-            <span className="recipe-card-meta-item">
-              💪 {recipe.nutrition.protein_g}g protein
-            </span>
-          )}
+          <span className="recipe-card-meta-item">
+            ⏱️ {recipe.total_time_min ?? '—'} min
+          </span>
+          <span className="recipe-card-meta-item">
+            👤 {recipe.servings} servings
+          </span>
+          <span className="recipe-card-meta-item">
+            💪 {recipe.nutrition?.protein_g ?? '—'}g protein
+          </span>
         </div>
 
         <div className="recipe-card-tags">

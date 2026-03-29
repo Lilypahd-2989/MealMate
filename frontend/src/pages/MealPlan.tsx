@@ -269,7 +269,9 @@ export default function MealPlan() {
                     <li key={idx} className="ingredient-item">
                       <div className="ingredient-dot"></div>
                       <div className="ingredient-amount">
-                        {item.amount !== null && item.amount > 0 ? Number(item.amount.toFixed(2)) : ''} {item.unit || ''}
+                        {item.amount !== null && item.amount > 0
+                          ? `${item.amount} ${item.unit || ''}`.trim()
+                          : 'to taste'}
                       </div>
                       <div className="ingredient-name">{item.name}</div>
                     </li>

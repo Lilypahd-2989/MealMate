@@ -175,8 +175,8 @@ export function getPantryItems(): Array<{ id: string; name: string }> {
 
 export function getDistinctCuisines(): string[] {
   const db = getDb();
-  const rows = db.prepare('SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL ORDER BY cuisine').all() as Array<{ cuisine: string }>;
-  return rows.map(r => r.cuisine);
+  const rows = db.prepare('SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL AND cuisine != \'\' ORDER BY cuisine').all() as Array<{ cuisine: string }>;
+  return rows.map(r => r.cuisine.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
 }
 
 export function getRecipeCount(): number {
@@ -277,8 +277,8 @@ export function getPlannedMealsForPlan(planId: string): Array<PlannedMealRow & {
 
 export function insertMealPlan(id: string, weekStart: string): MealPlanRow {
   const db = getDb();
-  db.prepare('INSERT INTO meal_plans (id, week_start) VALUES (?, ?)').run(id, weekStart);
-  return getMealPlanById(id) as MealPlanRow;
+  db.prepare('INSERT OR IGNORE INTO meal_plans (id, week_start) VALUES (?, ?)').run(id, weekStart);
+  return db.prepare('SELECT * FROM meal_plans WHERE week_start = ?').get(weekStart) as MealPlanRow;
 }
 
 export function deleteMealPlan(id: string): boolean {

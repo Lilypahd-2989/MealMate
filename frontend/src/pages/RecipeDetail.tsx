@@ -91,28 +91,22 @@ export default function RecipeDetail() {
         <h1 className="recipe-detail-title">{recipe.title}</h1>
 
         <div className="recipe-detail-meta">
-          {recipe.total_time_min && (
-            <div className="recipe-detail-meta-item">
-              <span className="recipe-detail-meta-value">{recipe.total_time_min}</span>
-              <span className="recipe-detail-meta-label">Minutes</span>
-            </div>
-          )}
+          <div className="recipe-detail-meta-item">
+            <span className="recipe-detail-meta-value">{recipe.total_time_min ?? '—'}</span>
+            <span className="recipe-detail-meta-label">Minutes</span>
+          </div>
           <div className="recipe-detail-meta-item">
             <span className="recipe-detail-meta-value">{recipe.servings}</span>
             <span className="recipe-detail-meta-label">Servings</span>
           </div>
-          {n?.calories && (
-            <div className="recipe-detail-meta-item">
-              <span className="recipe-detail-meta-value">{n.calories}</span>
-              <span className="recipe-detail-meta-label">Calories</span>
-            </div>
-          )}
-          {n?.protein_g && (
-            <div className="recipe-detail-meta-item">
-              <span className="recipe-detail-meta-value">{n.protein_g}g</span>
-              <span className="recipe-detail-meta-label">Protein</span>
-            </div>
-          )}
+          <div className="recipe-detail-meta-item">
+            <span className="recipe-detail-meta-value">{n?.calories ?? '—'}</span>
+            <span className="recipe-detail-meta-label">Calories</span>
+          </div>
+          <div className="recipe-detail-meta-item">
+            <span className="recipe-detail-meta-value">{n?.protein_g != null ? `${n.protein_g}g` : '—'}</span>
+            <span className="recipe-detail-meta-label">Protein</span>
+          </div>
         </div>
 
         <div className="recipe-card-tags" style={{ marginBottom: 'var(--space-4)' }}>
@@ -149,7 +143,7 @@ export default function RecipeDetail() {
                 <li key={i} className="ingredient-item">
                   <span className="ingredient-dot" />
                   <span className="ingredient-amount">
-                    {ing.amount ? `${ing.amount}${ing.unit ? ` ${ing.unit}` : ''}` : ''}
+                    {ing.amount ? `${ing.amount}${ing.unit ? ` ${ing.unit}` : ''}` : 'to taste'}
                   </span>
                   <span className="ingredient-name">{ing.name}</span>
                 </li>

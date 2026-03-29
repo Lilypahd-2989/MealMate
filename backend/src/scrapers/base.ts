@@ -127,16 +127,26 @@ function parseIngredientString(raw: string): ScrapedIngredient {
 
   const cleaned = raw.trim();
 
-  // Try to extract amount and unit
-  // We use \\b around the unit list to prevent treating the first letter of an ingredient (e.g. 'l' in large) as a unit.
+  // Try to extract amount and unit.
+  // Units are ordered longest-first so that e.g. 'lb' is tried before 'l',
+  // 'kg' before 'g', preventing single-letter units stealing the first
+  // character of a multi-letter word or abbreviation.
+  // The \b at the end ensures units only match as complete standalone tokens.
   const amountUnitMatch = cleaned.match(
-    /^([\d./½¼¾⅓⅔⅛]+(?:\s*-\s*[\d./½¼¾⅓⅔⅛]+)?)\s*(?:(tbsp|tablespoons?|tsp|teaspoons?|cups?|g|kg|ml|l|litre|liter|oz|lb|pounds?|cloves?|pieces?|large|medium|small|whole|bunch|handful|pinch|slice|slices|can|tin)\b)?\s*(?:of\s+)?(.*)/i
+    /^([\d./½¼¾⅓⅔⅛]+(?:\s*-\s*[\d./½¼¾⅓⅔⅛]+)?)\s*(?:(tablespoons?|teaspoons?|tbsp|tsp|cups?|kg|ml|litres?|liters?|litre|liter|pounds?|lb|oz|g|l|cloves?|pieces?|large|medium|small|whole|bunch|handful|pinch|slices?|can|tin)\b)?\s*(?:of\s+)?(.*)/i
   );
 
   if (amountUnitMatch) {
     let amountStr = amountUnitMatch[1];
-    // Convert unicode fractions
+    // Handle mixed numbers like 1½ → 1.5 before replacing bare fractions
     amountStr = amountStr
+      .replace(/(\d)½/g, (_, d) => String(parseInt(d, 10) + 0.5))
+      .replace(/(\d)¼/g, (_, d) => String(parseInt(d, 10) + 0.25))
+      .replace(/(\d)¾/g, (_, d) => String(parseInt(d, 10) + 0.75))
+      .replace(/(\d)⅓/g, (_, d) => String(parseInt(d, 10) + 0.33))
+      .replace(/(\d)⅔/g, (_, d) => String(parseInt(d, 10) + 0.67))
+      .replace(/(\d)⅛/g, (_, d) => String(parseInt(d, 10) + 0.125))
+      // Bare fractions (no leading digit)
       .replace('½', '0.5')
       .replace('¼', '0.25')
       .replace('¾', '0.75')
@@ -144,7 +154,7 @@ function parseIngredientString(raw: string): ScrapedIngredient {
       .replace('⅔', '0.67')
       .replace('⅛', '0.125');
 
-    // Handle fractions like 1/2
+    // Handle written fractions like 1/2
     let amount: number | null = null;
     if (amountStr.includes('/')) {
       const parts = amountStr.split('/');
@@ -155,8 +165,9 @@ function parseIngredientString(raw: string): ScrapedIngredient {
 
     const unit = amountUnitMatch[2]?.toLowerCase() || null;
     const name = amountUnitMatch[3]
-      .replace(/\s*\(.*?\)\s*/g, '')  // Remove parenthetical notes
-      .replace(/,\s*.*$/, '')          // Remove everything after comma
+      .replace(/^[.,\s]+/, '')         // Strip any leading period/comma left by "lb. name"
+      .replace(/\s*\(.*?\)\s*/g, '')   // Remove parenthetical notes
+      .replace(/,\s*(chopped|diced|sliced|peeled|minced|grated|crushed|halved|quartered|trimmed|rinsed|drained|roughly|finely|thinly|thickly|lightly|loosely|firmly)\b.*/i, '') // Remove prep notes after comma
       .trim();
 
     return {
@@ -253,7 +264,14 @@ export function parseJsonLdRecipe(jsonLd: any, url: string, source: string): Scr
   }
   if (jsonLd.recipeCategory) {
     const cats = Array.isArray(jsonLd.recipeCategory) ? jsonLd.recipeCategory : [jsonLd.recipeCategory];
-    parsedTags.push(...cats);
+    // Some sites store multiple categories as a single comma-separated string
+    for (const cat of cats) {
+      if (typeof cat === 'string' && cat.includes(',')) {
+        parsedTags.push(...cat.split(',').map((c: string) => c.trim()).filter(Boolean));
+      } else if (cat) {
+        parsedTags.push(cat);
+      }
+    }
   }
 
   // Helper to decode entities
@@ -303,7 +321,7 @@ export function parseJsonLdRecipe(jsonLd: any, url: string, source: string): Scr
     prep_time_min: prepTime,
     cook_time_min: cookTime,
     total_time_min: totalTime,
-    cuisine: decodeEntity(jsonLd.recipeCuisine || ''),
+    cuisine: decodeEntity(jsonLd.recipeCuisine || '') || null,
     tags,
     ingredients,
     instructions,

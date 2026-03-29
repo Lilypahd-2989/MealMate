@@ -14,6 +14,25 @@ import { scrapeRecipeFromUrl } from '../scrapers/base.js';
 
 const router = Router();
 
+/** Decode HTML entities in a string (handles &amp; &lt; &gt; &quot; &#39;) */
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+/** Split comma-blob tags and decode HTML entities (fixes legacy DB data) */
+function parseTags(raw: string): string[] {
+  const arr: string[] = JSON.parse(raw);
+  return arr
+    .flatMap(t => t.includes(',') ? t.split(',').map(s => s.trim()) : [t])
+    .map(decodeHtml)
+    .filter(Boolean);
+}
+
 /**
  * GET /api/recipes
  * List all recipes with optional filters
@@ -35,7 +54,7 @@ router.get('/', (req: Request, res: Response) => {
     // Parse JSON fields for the response
     const parsed = recipes.map(r => ({
       ...r,
-      tags: JSON.parse(r.tags),
+      tags: parseTags(r.tags),
       ingredients: JSON.parse(r.ingredients),
       instructions: JSON.parse(r.instructions),
       nutrition: JSON.parse(r.nutrition),

@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS recipes (
 
 CREATE TABLE IF NOT EXISTS meal_plans (
   id          TEXT PRIMARY KEY,
-  week_start  DATE NOT NULL,  -- Monday of the week
+  week_start  DATE NOT NULL UNIQUE,  -- Monday of the week, one plan per week
   created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
