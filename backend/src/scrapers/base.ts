@@ -145,35 +145,48 @@ const VALID_UNITS = new Set([
   'clove', 'cloves',
   'can', 'cans',
   'tin', 'tins',
-  'medium', 'small', 'large', 'whole',
+  'whole',
   'slice', 'slices', 'handful', 'handfuls', 'sprig', 'sprigs'
 ]);
 
+// Size descriptors that should never be treated as units
+const SIZE_DESCRIPTORS = new Set(['large', 'medium', 'small']);
+
+// Trailing prep notes to strip from ingredient names (longest phrases first)
+const PREP_NOTE_RX = /[,\s]*(sliced at an angle|homemade or store-bought|to taste|crushed|sliced|chopped|diced|minced)\s*$/i;
+
 function parseIngredientString(raw: string): ScrapedIngredient {
-  const cleaned = raw.trim();
-  
-  // Extract number at the start. Could be "1", "1.5", "1/2", "1 1/2", "1-2", "1½", "½"
-  const numberRegex = /^(\d+\s+\d+[/]\d+|\d+[/.]\d+|\d+-\d+|\d+[½¼¾⅓⅔⅛]|[½¼¾⅓⅔⅛]|\d+)\s*/;
+  const originalCleaned = raw.trim();
+
+  // Pre-process: normalize unicode fractions to decimal notation so the
+  // main number regex only needs to handle ASCII digits and decimal points.
+  const cleaned = originalCleaned
+    .replace(/(\d)\s*½/g, (_, d) => String(parseInt(d, 10) + 0.5))
+    .replace(/(\d)\s*¼/g, (_, d) => String(parseInt(d, 10) + 0.25))
+    .replace(/(\d)\s*¾/g, (_, d) => String(parseInt(d, 10) + 0.75))
+    .replace(/(\d)\s*⅓/g, (_, d) => String(parseInt(d, 10) + 0.33))
+    .replace(/(\d)\s*⅔/g, (_, d) => String(parseInt(d, 10) + 0.67))
+    .replace(/(\d)\s*⅛/g, (_, d) => String(parseInt(d, 10) + 0.125))
+    .replace(/½/g, '0.5')
+    .replace(/¼/g, '0.25')
+    .replace(/¾/g, '0.75')
+    .replace(/⅓/g, '0.33')
+    .replace(/⅔/g, '0.67')
+    .replace(/⅛/g, '0.125');
+
+  // Extract number at the start: "1", "1.5", "0.5", "1/2", "1 1/2", "1-2"
+  const numberRegex = /^(\d+\s+\d+[/]\d+|\d+[/.]\d+|\d+-\d+|\d+)\s*/;
   const match = cleaned.match(numberRegex);
-  
+
   let amount: number | null = null;
   let remainingStr = cleaned;
 
   if (match) {
-    let amountStr = match[1];
+    const amountStr = match[1];
     remainingStr = cleaned.slice(match[0].length).trim();
-    
-    // Convert unicode fractions
-    amountStr = amountStr
-      .replace(/½/g, '.5')
-      .replace(/¼/g, '.25')
-      .replace(/¾/g, '.75')
-      .replace(/⅓/g, '.33')
-      .replace(/⅔/g, '.67')
-      .replace(/⅛/g, '.125');
 
-    // Parse "1 1/2" or "1/2"
     if (amountStr.includes(' ')) {
+      // "1 1/2"
       const parts = amountStr.split(' ');
       if (parts[1].includes('/')) {
         const frac = parts[1].split('/');
@@ -183,46 +196,54 @@ function parseIngredientString(raw: string): ScrapedIngredient {
       const frac = amountStr.split('/');
       amount = parseFloat(frac[0]) / parseFloat(frac[1]);
     } else if (amountStr.includes('-')) {
-      // range like "1-2", just take the first number
       amount = parseFloat(amountStr.split('-')[0]);
     } else {
       amount = parseFloat(amountStr);
     }
-    
+
     if (amount !== null && isNaN(amount)) amount = null;
   }
 
-  // Parse unit
+  // Strip leading size descriptor (large/medium/small) before unit parsing.
+  // e.g. "large egg" → "egg"; "large can of tomatoes" → "can of tomatoes"
+  {
+    const firstWord = remainingStr.split(/\s+/)[0]?.toLowerCase().replace(/[.,]$/, '');
+    if (firstWord && SIZE_DESCRIPTORS.has(firstWord)) {
+      remainingStr = remainingStr.slice(firstWord.length).trim();
+    }
+  }
+
+  // Parse unit: consume the first word if it is a known unit
   let unit: string | null = null;
-  
-  // Extract first word, removing trailing period or comma
   const firstWordMatch = remainingStr.match(/^([a-zA-Z]+)[.,]?\s+(.*)/);
   if (firstWordMatch) {
     const word = firstWordMatch[1].toLowerCase();
-    
-    // Rule 1: check if it's purely a standalone valid unit
     if (VALID_UNITS.has(word)) {
       unit = word;
       remainingStr = firstWordMatch[2];
     }
   }
 
-  // Rule 2 / Strip "of"
+  // Strip "of"
   if (remainingStr.toLowerCase().startsWith('of ')) {
     remainingStr = remainingStr.slice(3).trim();
   }
-  
-  // Clean up trailing commas and notes
-  const name = remainingStr
-    .replace(/\s*\(.*?\)\s*/g, '')   // Remove parenthetical notes
-    .replace(/,\s*.*$/, '')          // Remove everything after comma
+
+  // Clean up: remove parentheticals, strip everything after first comma
+  let name = remainingStr
+    .replace(/\s*\(.*?\)\s*/g, '')
+    .replace(/,\s*.*$/, '')
     .trim();
+
+  // Strip trailing prep notes (run twice to handle compound notes like "finely chopped")
+  name = name.replace(PREP_NOTE_RX, '').trim();
+  name = name.replace(PREP_NOTE_RX, '').trim();
 
   return {
     name,
     amount,
     unit,
-    raw: cleaned,
+    raw: originalCleaned,
     category: categorizeIngredient(name),
     ah_search_term: null,
   };
@@ -349,11 +370,14 @@ export function parseJsonLdRecipe(jsonLd: any, url: string, source: string): Scr
     cookTime = totalTime; 
   }
 
+  const imageUrl = extractImageUrl(jsonLd.image);
+  console.log(`🖼️  Image field (${typeof jsonLd.image}): ${JSON.stringify(jsonLd.image)?.slice(0, 150)} → ${imageUrl}`);
+
   return {
     title: decodeEntity(jsonLd.name || 'Untitled Recipe'),
     source_url: url,
     source,
-    image_url: extractImageUrl(jsonLd.image),
+    image_url: imageUrl,
     servings,
     prep_time_min: prepTime,
     cook_time_min: cookTime,

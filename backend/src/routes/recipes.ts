@@ -123,6 +123,7 @@ router.post('/import', async (req: Request, res: Response) => {
 
     console.log(`🔍 Scraping recipe from: ${url}`);
     const scraped = await scrapeRecipeFromUrl(url);
+    console.log(`🖼️  image_url after scrape: ${scraped.image_url}`);
 
     const id = uuidv4();
     const recipe = insertRecipe({

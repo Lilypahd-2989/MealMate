@@ -118,6 +118,7 @@ export default function MealPlan() {
 
   const assignRecipe = async (recipeId: string) => {
     if (!plan || !selectedDay) return;
+    const recipe = libraryRecipes.find(r => r.id === recipeId);
     try {
       await fetch(`/api/meal-plans/${plan.id}/meals`, {
         method: 'POST',
@@ -125,7 +126,8 @@ export default function MealPlan() {
         body: JSON.stringify({
           recipe_id: recipeId,
           day: selectedDay.toLowerCase(),
-          meal_type: 'dinner'
+          meal_type: 'dinner',
+          servings: recipe?.servings ?? null
         })
       });
       // Re-fetch to get updated plan + grocery list
