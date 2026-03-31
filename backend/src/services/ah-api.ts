@@ -34,7 +34,7 @@ export async function searchAHProduct(query: string, limit = 3): Promise<AHProdu
     return [];
   }
 
-  const data = await res.json();
+  const data = await res.json() as { products?: any[] };
   const products: any[] = data.products || [];
 
   return products.map(p => ({

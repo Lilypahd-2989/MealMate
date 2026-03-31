@@ -120,9 +120,54 @@ function formatAmountAndUnit(baseAmount: number, groupKey: string): { amount: nu
   return { amount: roundCulinary(baseAmount, groupKey), unit: groupKey };
 }
 
+/**
+ * Strip prep notes and informal quantity prefixes for a clean display name.
+ * Less aggressive than normalizeName — preserves casing, plurals, and
+ * meaningful descriptors like "dried", "ground", "cooked".
+ */
+export function cleanDisplayName(name: string): string {
+  let n = name.trim();
+
+  // Strip leading informal quantity phrases: "a mugful of", "a cupful of", etc.
+  n = n.replace(/^a\s+\w*ful\s+of\s+/i, '');
+  n = n.replace(/^a\s+(?:few|bunch|handful|couple)\s+of\s+/i, '');
+
+  // Strip leading measurement descriptors that the scraper left in the name
+  // e.g. "heaped tsp Chinese five-spice" → "Chinese five-spice"
+  n = n.replace(/^(?:heaped|rounded|level|generous)\s+(?:tsp|tbsp|teaspoon|tablespoon)\s+/i, '');
+
+  // Strip trailing prep notes (most-specific phrases first to avoid partial matches)
+  const trailingPrep = [
+    'thinly sliced', 'roughly chopped', 'finely chopped', 'finely diced',
+    'coarsely chopped', 'halved and sliced', 'zested and juiced',
+    'sliced at an angle', 'at an angle',
+    'thinly', 'shredded', 'halved', 'chopped', 'diced', 'sliced',
+    'zested', 'juiced', 'trimmed', 'peeled', 'grated', 'minced', 'crushed',
+  ];
+  for (const prep of trailingPrep) {
+    const regex = new RegExp(`[,\\s]+\\b${prep.replace(/\s+/g, '\\s+')}\\b[\\s,]*$`, 'gi');
+    n = n.replace(regex, '');
+  }
+
+  n = n.replace(/\s+and\s*$/, '').replace(/[,;]\s*$/, '');
+
+  // Collapse multiple spaces and trim
+  n = n.replace(/\s+/g, ' ').trim();
+
+  // Capitalise first letter
+  if (!n) return name.trim(); // fallback to original if everything was stripped
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
 // Normalise ingredient names to catch slight variations when merging.
 export function normalizeName(name: string): string {
   let n = name.toLowerCase().trim();
+
+  // Strip leading informal quantity phrases so "a cupful of frozen peas"
+  // and "frozen peas" normalise to the same key.
+  n = n.replace(/^a\s+\w*ful\s+of\s+/i, '');
+  n = n.replace(/^a\s+(?:few|bunch|handful|couple)\s+of\s+/i, '');
+  n = n.replace(/^(?:heaped|rounded|level|generous)\s+(?:tsp|tbsp|teaspoon|tablespoon)\s+/i, '');
 
   // Prep descriptors and cut qualifiers to remove (word boundaries)
   const prepDescriptors = [
@@ -236,8 +281,15 @@ export function mergeIngredients(
         unit: gKey === 'none' ? null : gKey,
       };
 
-      if (mergedMap.has(mapKey)) {
-        const entry = mergedMap.get(mapKey)!;
+      // If this item has no parseable amount (failed-parse like "a cupful of"),
+      // try to merge it into an existing measured entry with the same name.
+      const fallbackKey = baseAmount === null && gKey === 'none'
+        ? [...mergedMap.keys()].find(k => k.startsWith(`${normalizedName}|`) && k !== mapKey)
+        : undefined;
+      const resolvedKey = fallbackKey ?? mapKey;
+
+      if (mergedMap.has(resolvedKey)) {
+        const entry = mergedMap.get(resolvedKey)!;
         if (entry.item.amount !== null && baseAmount !== null) {
           entry.item.amount += baseAmount;
         } else if (entry.item.amount === null && baseAmount !== null) {
@@ -250,7 +302,7 @@ export function mergeIngredients(
       } else {
         mergedMap.set(mapKey, {
           item: {
-            name: ing.name,
+            name: cleanDisplayName(ing.name),
             amount: baseAmount,
             unit: gKey === 'none' ? null : gKey,
             category: ing.category || null,
@@ -261,6 +313,23 @@ export function mergeIngredients(
           recipeSources: [source],
         });
       }
+    }
+  }
+
+  // ---- Post-merge: collapse null-amount "none" entries into measured same-name entries ----
+  // Handles cases like "a cupful of frozen peas" (amount=null, unit=none) + "100g frozen peas" (unit=g)
+  // where the informal entry was inserted before the measured one so the fallback couldn't fire.
+  for (const [key, entry] of [...mergedMap.entries()]) {
+    if (entry.item.amount !== null || entry.groupKey !== 'none') continue;
+    const normName = key.split('|')[0];
+    const measuredKey = [...mergedMap.keys()].find(
+      k => k !== key && k.startsWith(`${normName}|`)
+    );
+    if (measuredKey) {
+      const target = mergedMap.get(measuredKey)!;
+      target.item.raw_items.push(...entry.item.raw_items);
+      target.recipeSources.push(...entry.recipeSources);
+      mergedMap.delete(key);
     }
   }
 

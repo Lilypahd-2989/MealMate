@@ -65,7 +65,18 @@ router.get('/:id', (req: Request, res: Response) => {
     }
 
     const plannedMeals = getPlannedMealsForPlan(planId);
-    const groceryList = mergeIngredients(plannedMeals);
+    const { groceryList } = mergeIngredients(plannedMeals);
+
+    // Transform MergedIngredient to GroceryItem (field name mapping)
+    const transformedGroceryList = groceryList.map(item => ({
+      name: item.name,
+      amount: item.amount,
+      unit: item.unit,
+      category: item.category,
+      ah_search_term: item.ah_search_term,
+      notes: item.isLeftover && item.leftoverNote ? [item.leftoverNote] : null,
+      is_leftover: item.isLeftover ?? false,
+    }));
 
     // Reparse the recipe JSON fields of the joined recipes.
     const mealsWithParsedRecipes = plannedMeals.map(pm => {
@@ -83,7 +94,7 @@ router.get('/:id', (req: Request, res: Response) => {
     res.json({
       ...plan,
       meals: mealsWithParsedRecipes,
-      generated_grocery_list: groceryList
+      generated_grocery_list: transformedGroceryList
     });
   } catch (error) {
     console.error('Error fetching meal plan details:', error);

@@ -6,6 +6,7 @@ interface Recipe {
   id: string;
   title: string;
   image_url: string | null;
+  source_url: string | null;
   cuisine: string | null;
   total_time_min: number | null;
   servings: number;
@@ -144,7 +145,10 @@ export default function RecipeLibrary() {
             <RecipeCard
               key={recipe.id}
               recipe={recipe}
-              onClick={() => navigate(`/recipes/${recipe.id}`)}
+              onClick={() => recipe.source_url
+                ? window.open(recipe.source_url, '_blank', 'noopener')
+                : navigate(`/recipes/${recipe.id}`)
+              }
               onDelete={handleDelete}
             />
           ))}
