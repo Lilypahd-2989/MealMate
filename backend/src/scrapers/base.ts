@@ -152,8 +152,10 @@ const VALID_UNITS = new Set([
 // Size descriptors that should never be treated as units
 const SIZE_DESCRIPTORS = new Set(['large', 'medium', 'small']);
 
-// Trailing prep notes to strip from ingredient names (longest phrases first)
-const PREP_NOTE_RX = /[,\s]*(sliced at an angle|homemade or store-bought|to taste|crushed|sliced|chopped|diced|minced)\s*$/i;
+// Trailing prep notes and descriptors to strip from ingredient names
+// Matches prep phrases that appear after a comma or space at the end
+// Runs twice to handle compound phrases like "separated and finely sliced"
+const PREP_NOTE_RX = /[,\s]+(and\s+)?(sliced at an angle|white and green parts separated|homemade or store-bought|optional|to serve|to taste|finely chopped|roughly chopped|finely sliced|roughly sliced|peeled|crushed|sliced|chopped|diced|minced|grated|separated|leaves only|finely|roughly)\s*$/i;
 
 function parseIngredientString(raw: string): ScrapedIngredient {
   const originalCleaned = raw.trim();
@@ -174,8 +176,9 @@ function parseIngredientString(raw: string): ScrapedIngredient {
     .replace(/⅔/g, '0.67')
     .replace(/⅛/g, '0.125');
 
-  // Extract number at the start: "1", "1.5", "0.5", "1/2", "1 1/2", "1-2"
-  const numberRegex = /^(\d+\s+\d+[/]\d+|\d+[/.]\d+|\d+-\d+|\d+)\s*/;
+  // Extract number at the start: "1", "1.5", "0.5", "1/2", "1 1/2", "1-1.5", "1-2"
+  // Handle ranges with decimals (e.g. "1-1.5" from converted fractions)
+  const numberRegex = /^(\d+\s+\d+[/]\d+|\d+[/.]\d+(?:\s*-\s*\d+[/.]\d+)?|\d+[/-]\d+[/.]\d+|\d+-\d+(?:\.\d+)?|\d+)\s*/;
   const match = cleaned.match(numberRegex);
 
   let amount: number | null = null;
@@ -196,7 +199,9 @@ function parseIngredientString(raw: string): ScrapedIngredient {
       const frac = amountStr.split('/');
       amount = parseFloat(frac[0]) / parseFloat(frac[1]);
     } else if (amountStr.includes('-')) {
-      amount = parseFloat(amountStr.split('-')[0]);
+      // Range like "1-2" or "1-1.5": take the first value
+      const parts = amountStr.split('-');
+      amount = parseFloat(parts[0]);
     } else {
       amount = parseFloat(amountStr);
     }
