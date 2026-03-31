@@ -2,9 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend",
+      "runtimeExecutable": "/Users/lee/.nvm/versions/node/v24.14.1/bin/npm",
+      "runtimeArgs": ["run", "dev:backend"],
+      "cwd": "/Users/lee/Documents/AI Plugins/MealMate",
+      "port": 3001,
+      "autoPort": false
+    },
+    {
       "name": "frontend",
-      "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["/Users/lee/Documents/AI Plugins/MealMate/start-frontend.sh"],
+      "runtimeExecutable": "/Users/lee/.nvm/versions/node/v24.14.1/bin/npm",
+      "runtimeArgs": ["run", "dev:frontend"],
+      "cwd": "/Users/lee/Documents/AI Plugins/MealMate",
       "port": 3000
     }
   ]

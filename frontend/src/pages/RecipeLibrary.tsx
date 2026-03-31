@@ -39,6 +39,11 @@ export default function RecipeLibrary() {
     }
   }, [search, activeCuisine]);
 
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/recipes/${id}`, { method: 'DELETE' });
+    fetchRecipes();
+  };
+
   const fetchMeta = async () => {
     try {
       const res = await fetch('/api/recipes/meta');
@@ -140,6 +145,7 @@ export default function RecipeLibrary() {
               key={recipe.id}
               recipe={recipe}
               onClick={() => navigate(`/recipes/${recipe.id}`)}
+              onDelete={handleDelete}
             />
           ))}
         </div>
