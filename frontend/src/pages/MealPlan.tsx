@@ -27,6 +27,21 @@ interface GroceryItem {
   category: string | null;
   notes: string[] | null;
   is_leftover: boolean;
+  ah_search_term?: string | null;
+}
+
+interface AHProduct {
+  id: number;
+  title: string;
+  price: number | null;
+  unitSize: string | null;
+  imageUrl: string | null;
+  productUrl: string;
+}
+
+interface AHSearchResult {
+  ingredient: GroceryItem;
+  products: AHProduct[];
 }
 
 interface MealPlanData {
@@ -47,6 +62,12 @@ export default function MealPlan() {
   // Pantry filter
   const [pantryItems, setPantryItems] = useState<string[]>([]);
   const [filterPantry, setFilterPantry] = useState(true);
+
+  // AH shopping list
+  const [ahSearching, setAhSearching] = useState(false);
+  const [ahResults, setAhResults] = useState<AHSearchResult[] | null>(null);
+  const [ahSelections, setAhSelections] = useState<Record<number, number>>({}); // resultIdx → productIdx
+  const [ahExcluded, setAhExcluded] = useState<Set<number>>(new Set());
 
   // For recipe picker
   const [libraryRecipes, setLibraryRecipes] = useState<Recipe[]>([]);
@@ -181,7 +202,48 @@ export default function MealPlan() {
     }
   };
 
-  const filteredRecipes = libraryRecipes.filter(r => 
+  const searchAH = async () => {
+    if (!plan) return;
+    const visibleList = filterPantry
+      ? plan.generated_grocery_list.filter(item =>
+          !pantryItems.some(p => item.name.toLowerCase().includes(p))
+        )
+      : plan.generated_grocery_list;
+
+    const shoppableItems = visibleList.filter(i => !i.is_leftover);
+    if (shoppableItems.length === 0) return;
+
+    setAhSearching(true);
+    setAhResults(null);
+    setAhSelections({});
+    setAhExcluded(new Set());
+
+    try {
+      const res = await fetch('/api/shopping-lists/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: shoppableItems }),
+      });
+      const data = await res.json();
+      setAhResults(data.results);
+    } catch (err) {
+      console.error('AH search failed', err);
+    } finally {
+      setAhSearching(false);
+    }
+  };
+
+  const openAHCart = () => {
+    if (!ahResults) return;
+    ahResults.forEach((result, idx) => {
+      if (ahExcluded.has(idx)) return;
+      const productIdx = ahSelections[idx] ?? 0;
+      const product = result.products[productIdx];
+      if (product) window.open(product.productUrl, '_blank');
+    });
+  };
+
+  const filteredRecipes = libraryRecipes.filter(r =>
     r.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -337,6 +399,115 @@ export default function MealPlan() {
           );
         })()}
       </div>
+
+      {/* AH Submit Button */}
+      {plan.generated_grocery_list.some(i => !i.is_leftover) && (
+        <div style={{ marginTop: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            className="btn btn-primary"
+            onClick={ahResults ? () => setAhResults(null) : searchAH}
+            disabled={ahSearching}
+          >
+            {ahSearching ? '⏳ Searching AH...' : ahResults ? '✕ Close AH Review' : '🛒 Submit to Albert Heijn'}
+          </button>
+        </div>
+      )}
+
+      {/* AH Product Review Panel */}
+      {ahResults && (
+        <div className="card ah-review-panel" style={{ marginTop: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+            <h2 className="panel-title" style={{ marginBottom: 0 }}>🧡 Albert Heijn — Review & Order</h2>
+            <button
+              className="btn btn-primary"
+              onClick={openAHCart}
+              style={{ fontSize: 'var(--font-size-sm)' }}
+            >
+              Open {ahResults.filter((_, i) => !ahExcluded.has(i)).length} Products on AH →
+            </button>
+          </div>
+          <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
+            Each product opens on ah.be in a new tab. Log in once and add to cart.
+          </p>
+
+          <div className="ah-results-list">
+            {ahResults.map((result, idx) => {
+              const selectedIdx = ahSelections[idx] ?? 0;
+              const selectedProduct = result.products[selectedIdx];
+              const excluded = ahExcluded.has(idx);
+
+              return (
+                <div
+                  key={idx}
+                  className={`ah-result-row ${excluded ? 'ah-excluded' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!excluded}
+                    onChange={() => {
+                      setAhExcluded(prev => {
+                        const next = new Set(prev);
+                        excluded ? next.delete(idx) : next.add(idx);
+                        return next;
+                      });
+                    }}
+                    className="ah-checkbox"
+                  />
+
+                  <div className="ah-ingredient-label">
+                    <span className="ah-ingredient-name">{result.ingredient.name}</span>
+                    {result.ingredient.amount != null && (
+                      <span className="ah-ingredient-amount">
+                        {result.ingredient.amount} {result.ingredient.unit || ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedProduct ? (
+                    <div className="ah-product-match">
+                      {selectedProduct.imageUrl && (
+                        <img
+                          src={selectedProduct.imageUrl}
+                          alt={selectedProduct.title}
+                          className="ah-product-image"
+                        />
+                      )}
+                      <div className="ah-product-info">
+                        <span className="ah-product-title">{selectedProduct.title}</span>
+                        <span className="ah-product-meta">
+                          {selectedProduct.unitSize && <span>{selectedProduct.unitSize}</span>}
+                          {selectedProduct.price != null && (
+                            <span className="ah-product-price">€{selectedProduct.price.toFixed(2)}</span>
+                          )}
+                        </span>
+                      </div>
+                      {result.products.length > 1 && (
+                        <select
+                          className="ah-alt-select"
+                          value={selectedIdx}
+                          onChange={e => setAhSelections(prev => ({ ...prev, [idx]: Number(e.target.value) }))}
+                        >
+                          {result.products.map((p, pi) => (
+                            <option key={p.id} value={pi}>{p.title}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="ah-no-match">No match found</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 'var(--space-6)', display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary btn-lg" onClick={openAHCart}>
+              🛒 Order on Albert Heijn ({ahResults.filter((_, i) => !ahExcluded.has(i)).length} items)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Recipe Picker Modal */}
       {modalOpen && (

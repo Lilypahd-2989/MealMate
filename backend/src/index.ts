@@ -7,6 +7,7 @@ import { getDb } from './db/db.js';
 import recipesRouter from './routes/recipes.js';
 import mealPlansRouter from './routes/meal-plans.js';
 import pantryRouter from './routes/pantry.js';
+import shoppingListsRouter from './routes/shopping-lists.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,6 +32,7 @@ getDb();
 app.use('/api/recipes', recipesRouter);
 app.use('/api/meal-plans', mealPlansRouter);
 app.use('/api/pantry', pantryRouter);
+app.use('/api/shopping-lists', shoppingListsRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
