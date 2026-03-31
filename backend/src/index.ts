@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { getDb } from './db/db.js';
 import recipesRouter from './routes/recipes.js';
 import mealPlansRouter from './routes/meal-plans.js';
+import pantryRouter from './routes/pantry.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,7 @@ getDb();
 // Routes
 app.use('/api/recipes', recipesRouter);
 app.use('/api/meal-plans', mealPlansRouter);
+app.use('/api/pantry', pantryRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

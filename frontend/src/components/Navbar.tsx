@@ -5,6 +5,7 @@ const navItems = [
   { to: '/recipes', icon: '📖', label: 'Recipe Library' },
   { to: '/import', icon: '➕', label: 'Import Recipe' },
   { to: '/meal-plan', icon: '📅', label: 'Meal Plan' },
+  { to: '/settings', icon: '⚙️', label: 'Settings' },
 ];
 
 const futureItems = [

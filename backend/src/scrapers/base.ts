@@ -310,6 +310,15 @@ export function parseJsonLdRecipe(jsonLd: any, url: string, source: string): Scr
   let ingredients: ScrapedIngredient[] = [];
   if (jsonLd.recipeIngredient && Array.isArray(jsonLd.recipeIngredient)) {
     ingredients = jsonLd.recipeIngredient.map((ing: string) => parseIngredientString(ing));
+    // Convert imperial units to metric for US recipe sources
+    if (US_SOURCES.has(source)) {
+      ingredients = ingredients.map(convertIngredientToMetric);
+    }
+  }
+
+  // Convert Fahrenheit temperatures in instructions for US sources
+  if (US_SOURCES.has(source)) {
+    instructions = fahrenheitToCelsius(instructions);
   }
 
   // Determine tags
@@ -390,6 +399,49 @@ export function parseJsonLdRecipe(jsonLd: any, url: string, source: string): Scr
     leftover_friendly: false,
     leftover_note: null,
   };
+}
+
+// Sources that use imperial units and need metric conversion on import
+const US_SOURCES = new Set(['bon_appetit', 'allrecipes', 'other']);
+
+/**
+ * Convert a single ingredient's imperial unit to metric.
+ * oz/lb → g (upgrading to kg at ≥1000g); cup → ml (upgrading to l at ≥1000ml).
+ * tsp/tbsp are kept as-is.
+ */
+function convertIngredientToMetric(ing: ScrapedIngredient): ScrapedIngredient {
+  if (!ing.unit || ing.amount == null) return ing;
+  const unit = ing.unit.toLowerCase();
+
+  if (['oz', 'ounce', 'ounces'].includes(unit)) {
+    const grams = Math.round(ing.amount * 28);
+    if (grams >= 1000) return { ...ing, amount: Math.round(grams / 100) / 10, unit: 'kg' };
+    return { ...ing, amount: grams, unit: 'g' };
+  }
+  if (['lb', 'lbs', 'pound', 'pounds'].includes(unit)) {
+    const grams = Math.round(ing.amount * 454);
+    if (grams >= 1000) return { ...ing, amount: Math.round(grams / 100) / 10, unit: 'kg' };
+    return { ...ing, amount: grams, unit: 'g' };
+  }
+  if (['cup', 'cups'].includes(unit)) {
+    const ml = Math.round(ing.amount * 237);
+    if (ml >= 1000) return { ...ing, amount: Math.round(ml / 100) / 10, unit: 'l' };
+    return { ...ing, amount: ml, unit: 'ml' };
+  }
+  return ing;
+}
+
+/**
+ * Replace Fahrenheit temperatures in instruction strings with Celsius,
+ * rounded to the nearest 5°C for clean values.
+ */
+function fahrenheitToCelsius(instructions: string[]): string[] {
+  return instructions.map(step =>
+    step.replace(/(\d+(?:\.\d+)?)\s*°?\s*F\b/g, (_, f) => {
+      const c = (parseFloat(f) - 32) * 5 / 9;
+      return `${Math.round(c / 5) * 5}°C`;
+    })
+  );
 }
 
 /**

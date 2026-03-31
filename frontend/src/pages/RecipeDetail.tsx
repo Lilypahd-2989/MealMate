@@ -40,6 +40,9 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [editingServings, setEditingServings] = useState(false);
+  const [servingsInput, setServingsInput] = useState('');
+  const [savingServings, setSavingServings] = useState(false);
 
   useEffect(() => {
     const fetchRecipe = async () => {
@@ -65,6 +68,46 @@ export default function RecipeDetail() {
       navigate('/recipes');
     } catch {
       setDeleting(false);
+    }
+  };
+
+  const startEditServings = () => {
+    if (!recipe) return;
+    setServingsInput(String(recipe.servings));
+    setEditingServings(true);
+  };
+
+  const saveServings = async () => {
+    if (!recipe) return;
+    const newServings = Math.max(1, parseInt(servingsInput, 10) || 1);
+    if (newServings === recipe.servings) { setEditingServings(false); return; }
+
+    setSavingServings(true);
+    try {
+      const ratio = recipe.servings / newServings;
+      const n = recipe.nutrition;
+      const newNutrition = n ? {
+        calories:  n.calories  != null ? Math.round(n.calories  * ratio)           : null,
+        protein_g: n.protein_g != null ? Math.round(n.protein_g * ratio * 10) / 10 : null,
+        carbs_g:   n.carbs_g   != null ? Math.round(n.carbs_g   * ratio * 10) / 10 : null,
+        fat_g:     n.fat_g     != null ? Math.round(n.fat_g     * ratio * 10) / 10 : null,
+        fibre_g:   n.fibre_g   != null ? Math.round(n.fibre_g   * ratio * 10) / 10 : null,
+      } : null;
+
+      await fetch(`/api/recipes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ servings: newServings, nutrition: newNutrition }),
+      });
+
+      // Refresh recipe data from server
+      const res = await fetch(`/api/recipes/${id}`);
+      if (res.ok) setRecipe(await res.json());
+      setEditingServings(false);
+    } catch (err) {
+      console.error('Failed to save servings:', err);
+    } finally {
+      setSavingServings(false);
     }
   };
 
@@ -96,7 +139,37 @@ export default function RecipeDetail() {
             <span className="recipe-detail-meta-label">Minutes</span>
           </div>
           <div className="recipe-detail-meta-item">
-            <span className="recipe-detail-meta-value">{recipe.servings}</span>
+            {editingServings ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <input
+                  type="number"
+                  min="1"
+                  value={servingsInput}
+                  onChange={e => setServingsInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveServings(); if (e.key === 'Escape') setEditingServings(false); }}
+                  style={{ width: '56px', padding: 'var(--space-1) var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-accent)', fontSize: 'var(--font-size-lg)', fontWeight: 700, textAlign: 'center' }}
+                  autoFocus
+                />
+                <button className="btn btn-primary" style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-xs)' }} onClick={saveServings} disabled={savingServings}>
+                  {savingServings ? '…' : '✓'}
+                </button>
+                <button className="btn btn-ghost" style={{ padding: 'var(--space-1) var(--space-2)', fontSize: 'var(--font-size-xs)' }} onClick={() => setEditingServings(false)}>
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span className="recipe-detail-meta-value">{recipe.servings}</span>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '2px var(--space-2)', fontSize: 'var(--font-size-xs)', opacity: 0.6 }}
+                  onClick={startEditServings}
+                  title="Edit serving count"
+                >
+                  ✏️
+                </button>
+              </div>
+            )}
             <span className="recipe-detail-meta-label">Servings</span>
           </div>
           <div className="recipe-detail-meta-item">

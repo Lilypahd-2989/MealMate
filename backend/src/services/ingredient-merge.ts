@@ -7,6 +7,8 @@ export interface MergedIngredient {
   category: string | null;
   ah_search_term: string | null;
   raw_items: string[];
+  notes: string[] | null;    // per-recipe preparation notes when names differ
+  is_leftover: boolean;      // true → "use leftovers" flag, not a shopping qty
 }
 
 // SI units that should be normalised into a common base for merging.
@@ -114,25 +116,38 @@ function formatAmountAndUnit(baseAmount: number, groupKey: string): { amount: nu
   return { amount: roundCulinary(baseAmount, groupKey), unit: groupKey === 'g' || groupKey === 'ml' ? groupKey : groupKey };
 }
 
-// Normalise ingredient names to catch slight variations when merging.
+// Words to strip when building a normalised merge key.
+// Adjectives/adverbs — describe how it's prepared but not what it is.
+const PREP_WORDS = [
+  'fresh', 'chopped', 'diced', 'sliced', 'peeled', 'minced', 'grated',
+  'crushed', 'organic', 'raw', 'cooked', 'dried', 'ground', 'finely',
+  'roughly', 'thinly', 'thickly', 'leaves', 'bunch', 'boneless', 'skinless',
+  'trimmed', 'halved', 'quartered', 'shredded', 'toasted', 'roasted',
+];
+
+// Cut / part qualifiers — name the specific piece of an ingredient.
+// Stripping these groups "chicken breast" + "chicken thighs" → "chicken",
+// "broccoli florets" + "broccoli" → "broccoli", etc.
+const PART_WORDS = [
+  'breast', 'breasts', 'thigh', 'thighs', 'drumstick', 'drumsticks',
+  'wing', 'wings', 'mince', 'loin', 'chop', 'chops', 'fillet', 'fillets',
+  'filet', 'filets', 'cutlet', 'cutlets', 'leg', 'legs', 'rack',
+  'floret', 'florets', 'stalk', 'stalks', 'stem', 'stems',
+  'head', 'clove', 'cloves', 'piece', 'pieces', 'sprig', 'sprigs',
+];
+
+// Normalise ingredient names to a base key used for grouping/merging.
 function normalizeName(name: string): string {
   let n = name.toLowerCase().trim();
 
-  const adjectivesToRemove = [
-    'fresh', 'chopped', 'diced', 'sliced', 'peeled', 'minced', 'grated',
-    'crushed', 'organic', 'raw', 'cooked', 'dried', 'ground', 'finely',
-    'roughly', 'thinly', 'thickly', 'leaves', 'bunch',
-  ];
-
-  for (const adj of adjectivesToRemove) {
-    const regex = new RegExp(`\\b${adj}\\b`, 'g');
-    n = n.replace(regex, '');
+  for (const word of [...PREP_WORDS, ...PART_WORDS]) {
+    n = n.replace(new RegExp(`\\b${word}\\b`, 'g'), '');
   }
 
   n = n.replace(/\s+/g, ' ').trim();
 
-  // Basic de-pluralise (remove trailing s if length > 3 and not ending ss)
-  if (n.length > 3 && n.endsWith('s') && !n.endsWith('ss')) {
+  // Basic de-pluralise (remove trailing s if length > 3 and not ending ss/us/is)
+  if (n.length > 3 && n.endsWith('s') && !n.endsWith('ss') && !n.endsWith('us') && !n.endsWith('is')) {
     n = n.slice(0, -1);
   }
   return n;
@@ -140,7 +155,16 @@ function normalizeName(name: string): string {
 
 export function mergeIngredients(plannedMeals: Array<PlannedMealRow & { recipe: RecipeRow }>): MergedIngredient[] {
   // Key: normalised-name + '|' + unitGroupKey
-  const mergedMap = new Map<string, { item: MergedIngredient; groupKey: string }>();
+  const mergedMap = new Map<string, {
+    item: MergedIngredient;
+    groupKey: string;
+    // track original name per recipe to detect variations
+    originalNames: Set<string>;
+    recipeNotes: string[];
+  }>();
+
+  // Separate list for leftover items (keyed by ingredient name + recipe)
+  const leftoverItems: MergedIngredient[] = [];
 
   for (const meal of plannedMeals) {
     let recipeIngredients: any[] = [];
@@ -151,11 +175,29 @@ export function mergeIngredients(plannedMeals: Array<PlannedMealRow & { recipe: 
       continue;
     }
 
+    const recipeTitle = meal.recipe.title;
     const targetServings = meal.servings ?? meal.recipe.servings;
     const baseServings = meal.recipe.servings;
     const scaleFactor = baseServings > 0 && targetServings > 0 ? targetServings / baseServings : 1;
 
     for (const ing of recipeIngredients) {
+      const lowerName = ing.name.toLowerCase();
+
+      // Leftover detection — never add to the shopping list
+      if (lowerName.includes('leftover')) {
+        leftoverItems.push({
+          name: ing.name,
+          amount: null,
+          unit: null,
+          category: ing.category || null,
+          ah_search_term: null,
+          raw_items: [ing.raw],
+          notes: [`Use leftovers from: ${recipeTitle}`],
+          is_leftover: true,
+        });
+        continue;
+      }
+
       const normalizedName = normalizeName(ing.name);
       const gKey = unitGroupKey(ing.unit);
       const mapKey = `${normalizedName}|${gKey}`;
@@ -173,17 +215,32 @@ export function mergeIngredients(plannedMeals: Array<PlannedMealRow & { recipe: 
         entry.item.raw_items.push(ing.raw);
         if (!entry.item.category && ing.category) entry.item.category = ing.category;
         if (!entry.item.ah_search_term && ing.ah_search_term) entry.item.ah_search_term = ing.ah_search_term;
+
+        // Track name variation for this recipe
+        if (!entry.originalNames.has(ing.name.toLowerCase())) {
+          entry.originalNames.add(ing.name.toLowerCase());
+          entry.recipeNotes.push(`${recipeTitle}: ${ing.name}`);
+        }
       } else {
+        // Capitalise the normalized base name for display when merging occurs
+        const displayName = normalizedName
+          ? normalizedName.charAt(0).toUpperCase() + normalizedName.slice(1)
+          : ing.name;
+
         mergedMap.set(mapKey, {
           item: {
-            name: ing.name,
+            name: displayName,
             amount: baseAmount,
             unit: gKey === 'none' ? null : gKey,
             category: ing.category || null,
             ah_search_term: ing.ah_search_term || null,
             raw_items: [ing.raw],
+            notes: null,
+            is_leftover: false,
           },
           groupKey: gKey,
+          originalNames: new Set([ing.name.toLowerCase()]),
+          recipeNotes: [`${recipeTitle}: ${ing.name}`],
         });
       }
     }
@@ -191,16 +248,25 @@ export function mergeIngredients(plannedMeals: Array<PlannedMealRow & { recipe: 
 
   // Format amounts back to display units with culinary rounding
   const result: MergedIngredient[] = [];
-  for (const { item, groupKey } of mergedMap.values()) {
+  for (const { item, groupKey, originalNames, recipeNotes } of mergedMap.values()) {
     if (item.amount !== null) {
       const formatted = formatAmountAndUnit(item.amount, groupKey);
       item.amount = formatted.amount;
       item.unit = formatted.unit;
     }
+    // Only attach notes when there are genuine name variations across recipes
+    if (originalNames.size > 1) {
+      item.notes = recipeNotes;
+    }
     result.push(item);
   }
 
+  // Append leftover flags at the end
+  result.push(...leftoverItems);
+
   result.sort((a, b) => {
+    // Leftovers sink to the bottom
+    if (a.is_leftover !== b.is_leftover) return a.is_leftover ? 1 : -1;
     const catA = a.category || 'z_other';
     const catB = b.category || 'z_other';
     if (catA !== catB) return catA.localeCompare(catB);

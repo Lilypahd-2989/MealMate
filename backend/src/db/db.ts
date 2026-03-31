@@ -173,6 +173,17 @@ export function getPantryItems(): Array<{ id: string; name: string }> {
   return db.prepare('SELECT * FROM pantry_items ORDER BY name').all() as Array<{ id: string; name: string }>;
 }
 
+export function insertPantryItem(id: string, name: string): void {
+  const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO pantry_items (id, name) VALUES (?, ?)').run(id, name.trim().toLowerCase());
+}
+
+export function deletePantryItem(id: string): boolean {
+  const db = getDb();
+  const result = db.prepare('DELETE FROM pantry_items WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
 export function getDistinctCuisines(): string[] {
   const db = getDb();
   const rows = db.prepare('SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL AND cuisine != \'\' ORDER BY cuisine').all() as Array<{ cuisine: string }>;

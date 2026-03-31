@@ -76,7 +76,14 @@ INSERT OR IGNORE INTO pantry_items (id, name) VALUES
   ('pantry-007', 'vegetable oil'),
   ('pantry-008', 'soy sauce'),
   ('pantry-009', 'paprika'),
-  ('pantry-010', 'cumin');
+  ('pantry-010', 'cumin'),
+  ('pantry-011', 'sugar'),
+  ('pantry-012', 'fish sauce'),
+  ('pantry-013', 'flour'),
+  ('pantry-014', 'neutral oil'),
+  ('pantry-015', 'chilli flakes'),
+  ('pantry-016', 'turmeric'),
+  ('pantry-017', 'oregano');
 
 -- Default user
 INSERT OR IGNORE INTO users (id, name, preferences) VALUES (

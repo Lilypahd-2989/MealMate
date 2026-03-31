@@ -25,6 +25,8 @@ interface GroceryItem {
   amount: number | null;
   unit: string | null;
   category: string | null;
+  notes: string[] | null;
+  is_leftover: boolean;
 }
 
 interface MealPlanData {
@@ -41,7 +43,11 @@ export default function MealPlan() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  
+
+  // Pantry filter
+  const [pantryItems, setPantryItems] = useState<string[]>([]);
+  const [filterPantry, setFilterPantry] = useState(true);
+
   // For recipe picker
   const [libraryRecipes, setLibraryRecipes] = useState<Recipe[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,7 +56,18 @@ export default function MealPlan() {
   useEffect(() => {
     fetchMealPlan();
     fetchLibrary();
+    fetchPantry();
   }, []);
+
+  const fetchPantry = async () => {
+    try {
+      const res = await fetch('/api/pantry');
+      const items: Array<{ id: string; name: string }> = await res.json();
+      setPantryItems(items.map(i => i.name.toLowerCase()));
+    } catch (err) {
+      console.error('Failed to fetch pantry items:', err);
+    }
+  };
 
   const fetchMealPlan = async () => {
     try {
@@ -250,39 +267,75 @@ export default function MealPlan() {
 
       {/* Shopping List Panel */}
       <div className="shopping-list-panel card">
-        <h2 className="panel-title">🛒 Auto-Generated Grocery List</h2>
-        
-        {plan.generated_grocery_list.length === 0 ? (
-          <p className="empty-list-text">Add recipes to your plan to generate a shopping list.</p>
-        ) : (
-          <div className="grocery-departments-grid">
-            {Object.entries(
-              plan.generated_grocery_list.reduce((acc, item) => {
-                const dept = item.category || 'Other';
-                if (!acc[dept]) acc[dept] = [];
-                acc[dept].push(item);
-                return acc;
-              }, {} as Record<string, GroceryItem[]>)
-            ).map(([dept, items]) => (
-              <div key={dept} className="grocery-department">
-                <h3 className="grocery-dept-title">{dept}</h3>
-                <ul className="ingredient-list">
-                  {items.map((item, idx) => (
-                    <li key={idx} className="ingredient-item">
-                      <div className="ingredient-dot"></div>
-                      <div className="ingredient-amount">
-                        {item.amount !== null && item.amount > 0
-                          ? `${item.amount} ${item.unit || ''}`.trim()
-                          : 'to taste'}
-                      </div>
-                      <div className="ingredient-name">{item.name}</div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
+          <h2 className="panel-title" style={{ marginBottom: 0 }}>🛒 Auto-Generated Grocery List</h2>
+          <button
+            className={`btn btn-secondary`}
+            style={{ fontSize: 'var(--font-size-xs)', padding: 'var(--space-2) var(--space-3)' }}
+            onClick={() => setFilterPantry(p => !p)}
+            title="Toggle pantry staples visibility"
+          >
+            🧂 Pantry: {filterPantry ? 'Hidden' : 'Shown'}
+          </button>
+        </div>
+
+        {(() => {
+          const visibleList = filterPantry
+            ? plan.generated_grocery_list.filter(item =>
+                !pantryItems.some(p => item.name.toLowerCase().includes(p))
+              )
+            : plan.generated_grocery_list;
+
+          return visibleList.length === 0 ? (
+            <p className="empty-list-text">
+              {plan.generated_grocery_list.length === 0
+                ? 'Add recipes to your plan to generate a shopping list.'
+                : 'All ingredients are pantry staples. Toggle pantry to show them.'}
+            </p>
+          ) : (
+            <div className="grocery-departments-grid">
+              {Object.entries(
+                visibleList.reduce((acc, item) => {
+                  const dept = item.category || 'Other';
+                  if (!acc[dept]) acc[dept] = [];
+                  acc[dept].push(item);
+                  return acc;
+                }, {} as Record<string, GroceryItem[]>)
+              ).map(([dept, items]) => (
+                <div key={dept} className="grocery-department">
+                  <h3 className="grocery-dept-title">{dept}</h3>
+                  <ul className="ingredient-list">
+                    {items.map((item, idx) => (
+                      <li key={idx} className="ingredient-item" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                          <div className="ingredient-dot"></div>
+                          <div className="ingredient-amount" style={{ opacity: item.is_leftover ? 0.5 : 1 }}>
+                            {item.is_leftover
+                              ? '—'
+                              : item.amount !== null && item.amount > 0
+                                ? `${item.amount} ${item.unit || ''}`.trim()
+                                : 'to taste'}
+                          </div>
+                          <div className="ingredient-name">{item.name}</div>
+                        </div>
+                        {item.is_leftover && item.notes && item.notes.length > 0 && (
+                          <div style={{ paddingLeft: 'calc(var(--space-3) + 12px)', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>
+                            {item.notes[0]}
+                          </div>
+                        )}
+                        {!item.is_leftover && item.notes && item.notes.length > 0 && (
+                          <div style={{ paddingLeft: 'calc(var(--space-3) + 12px)', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                            {item.notes.join(' · ')}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Recipe Picker Modal */}
