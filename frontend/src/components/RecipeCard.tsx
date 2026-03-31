@@ -14,6 +14,7 @@ interface RecipeCardProps {
     leftover_friendly: boolean;
   };
   onClick: () => void;
+  onDelete?: (id: string) => void;
 }
 
 const cuisineEmojis: Record<string, string> = {
@@ -31,11 +32,18 @@ const cuisineEmojis: Record<string, string> = {
   'Scandinavian': '🐟',
 };
 
-export default function RecipeCard({ recipe, onClick }: RecipeCardProps) {
+export default function RecipeCard({ recipe, onClick, onDelete }: RecipeCardProps) {
   const emoji = recipe.cuisine ? cuisineEmojis[recipe.cuisine] || '🍽️' : '🍽️';
 
   return (
     <div className="card recipe-card" onClick={onClick}>
+      {onDelete && (
+        <button
+          className="recipe-card-delete"
+          onClick={(e) => { e.stopPropagation(); onDelete(recipe.id); }}
+          aria-label="Delete recipe"
+        >✕</button>
+      )}
       {recipe.image_url ? (
         <img
           className="recipe-card-image"

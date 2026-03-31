@@ -268,6 +268,33 @@ input, textarea, select {
   cursor: pointer;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+.recipe-card-delete {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+
+.recipe-card:hover .recipe-card-delete {
+  opacity: 1;
+}
+
+.recipe-card-delete:hover {
+  background: var(--color-danger, #e53e3e);
 }
 
 .recipe-card-image {
