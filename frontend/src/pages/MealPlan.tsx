@@ -235,12 +235,22 @@ export default function MealPlan() {
 
   const openAHCart = () => {
     if (!ahResults) return;
-    ahResults.forEach((result, idx) => {
-      if (ahExcluded.has(idx)) return;
-      const productIdx = ahSelections[idx] ?? 0;
-      const product = result.products[productIdx];
-      if (product) window.open(product.productUrl, '_blank');
-    });
+    const productIds = ahResults
+      .filter((_, idx) => !ahExcluded.has(idx))
+      .map((result, idx) => {
+        const productIdx = ahSelections[idx] ?? 0;
+        return result.products[productIdx];
+      })
+      .filter(Boolean)
+      .map(p => `wi${p!.id}`)
+      .join(',');
+
+    if (!productIds) return;
+
+    // AH shopping list URL — opens a pre-populated list on ah.be.
+    // User logs in once and all items are ready to add to cart.
+    const listUrl = `https://www.ah.be/mijn-producten/lijstje?product=${productIds}`;
+    window.open(listUrl, '_blank');
   };
 
   const filteredRecipes = libraryRecipes.filter(r =>
@@ -423,11 +433,11 @@ export default function MealPlan() {
               onClick={openAHCart}
               style={{ fontSize: 'var(--font-size-sm)' }}
             >
-              Open {ahResults.filter((_, i) => !ahExcluded.has(i)).length} Products on AH →
+              Open List on AH ({ahResults.filter((_, i) => !ahExcluded.has(i)).length} items) →
             </button>
           </div>
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-            Each product opens on ah.be in a new tab. Log in once and add to cart.
+            All selected items open as a single shopping list on ah.be. Log in and add everything to your cart.
           </p>
 
           <div className="ah-results-list">
@@ -503,7 +513,7 @@ export default function MealPlan() {
 
           <div style={{ marginTop: 'var(--space-6)', display: 'flex', justifyContent: 'flex-end' }}>
             <button className="btn btn-primary btn-lg" onClick={openAHCart}>
-              🛒 Order on Albert Heijn ({ahResults.filter((_, i) => !ahExcluded.has(i)).length} items)
+              🛒 Open Shopping List on ah.be ({ahResults.filter((_, i) => !ahExcluded.has(i)).length} items)
             </button>
           </div>
         </div>
